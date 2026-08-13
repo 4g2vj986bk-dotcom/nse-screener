@@ -45,45 +45,35 @@
           const [results, setResults] = React.useState(null);
           const [viewMode, setViewMode] = React.useState('results');
           const [selectedMatch, setSelectedMatch] = React.useState(null);
-          const [testMode, setTestMode] = React.useState(false); // DEFAULT: FALSE - Real data
 
           const BEAR_CASE_LIBRARY = {
             PE_LOW: '⚠️ Low PE may indicate market undervalues fundamentals or expects earnings decline.',
             PB_LOW: '⚠️ Low PB could signal structural challenges or investor skepticism about asset quality.',
           };
 
-          // Mock data - ALWAYS USE THIS
-          const mockStocks = {
-            'RELIANCE.NS': { price: 2850.50, pe: 22.5, pb: 2.8 },
-            'INFY.NS': { price: 1600.75, pe: 24.1, pb: 2.9 },
-            'TCS.NS': { price: 3850.25, pe: 23.5, pb: 3.2 },
-            'HDFC.NS': { price: 2150.00, pe: 21.0, pb: 2.6 },
-            'ICICIBANK.NS': { price: 980.50, pe: 19.5, pb: 2.4 },
-            'SBIN.NS': { price: 750.75, pe: 12.0, pb: 1.8 },
-            'MARUTI.NS': { price: 10850.00, pe: 25.0, pb: 3.1 },
-            'BAJAJ-AUTO.NS': { price: 9200.50, pe: 28.0, pb: 3.5 },
-            'WIPRO.NS': { price: 420.50, pe: 20.5, pb: 2.5 },
-            'ADANIPORTS.NS': { price: 1050.00, pe: 15.0, pb: 2.0 }
-          };
-
-          // Fetch real stock data from Yahoo Finance
+          // Fetch REAL stock data from Yahoo Finance
           const fetchStockData = async (ticker) => {
             try {
               const response = await fetch(
                 `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=financialData,defaultKeyStatistics,price`,
-                { headers: { 'User-Agent': 'Mozilla/5.0' } }
+                { 
+                  headers: { 'User-Agent': 'Mozilla/5.0' },
+                  method: 'GET'
+                }
               );
               
-              if (!response.ok) throw new Error('No data');
+              if (!response.ok) throw new Error('API error');
               
               const data = await response.json();
               const result = data.quoteSummary?.result?.[0];
               
-              if (!result) throw new Error('No data');
+              if (!result) throw new Error('No result');
 
               const price = result.price?.regularMarketPrice?.raw;
               const pe = result.defaultKeyStatistics?.trailingPE?.raw;
               const pb = result.defaultKeyStatistics?.priceToBook?.raw;
+
+              if (!price) throw new Error('No price');
 
               return {
                 ticker,
@@ -93,31 +83,29 @@
                 data_available: true
               };
             } catch (err) {
-              return {
-                ticker,
-                data_available: false
-              };
+              console.error(`Error fetching ${ticker}:`, err);
+              return null;
             }
           };
 
           const screenStock = (ticker, stockData) => {
-            if (!stockData) return null;
+            if (!stockData || !stockData.data_available) return null;
 
             const criteria = [];
 
-            if (stockData.pe <= thresholds.pe_max) {
+            if (stockData.pe && stockData.pe <= thresholds.pe_max) {
               criteria.push(`PE ${stockData.pe.toFixed(1)} ≤ ${thresholds.pe_max}`);
             }
 
-            if (stockData.pb <= thresholds.pb_max) {
+            if (stockData.pb && stockData.pb <= thresholds.pb_max) {
               criteria.push(`PB ${stockData.pb.toFixed(2)} ≤ ${thresholds.pb_max}`);
             }
 
             if (criteria.length === 0) return null;
 
             const bearPoints = [];
-            if (stockData.pe < 15) bearPoints.push(BEAR_CASE_LIBRARY.PE_LOW);
-            if (stockData.pb < 1.5) bearPoints.push(BEAR_CASE_LIBRARY.PB_LOW);
+            if (stockData.pe && stockData.pe < 15) bearPoints.push(BEAR_CASE_LIBRARY.PE_LOW);
+            if (stockData.pb && stockData.pb < 1.5) bearPoints.push(BEAR_CASE_LIBRARY.PB_LOW);
 
             return {
               ticker,
@@ -130,27 +118,29 @@
             };
           };
 
-          // Run screening
+          // Run screening with REAL data
           const runScreening = async () => {
             setScanning(true);
             setViewMode('results');
 
             try {
               const matches = [];
+              let processed = 0;
 
               for (const ticker of universe) {
                 try {
-                  // Fetch real data if test mode is off
-                  const stockData = testMode ? mockStocks[ticker] : await fetchStockData(ticker);
+                  const stockData = await fetchStockData(ticker);
+                  processed++;
                   
-                  if (stockData) {
+                  if (stockData && stockData.data_available) {
                     const match = screenStock(ticker, stockData);
                     if (match) matches.push(match);
                   }
+                  
+                  await new Promise(r => setTimeout(r, 400));
                 } catch (err) {
-                  console.error(`Error processing ${ticker}:`, err);
+                  console.error(`Failed: ${ticker}`);
                 }
-                await new Promise(r => setTimeout(r, 300));
               }
 
               matches.sort((a, b) => b.match_count - a.match_count);
@@ -159,11 +149,12 @@
                 timestamp: new Date().toLocaleString(),
                 matches,
                 total_screened: universe.length,
+                total_processed: processed,
                 match_count: matches.length
               });
 
             } catch (err) {
-              console.error(err);
+              console.error('Screening error:', err);
             } finally {
               setScanning(false);
             }
@@ -175,7 +166,7 @@
             const chatId = localStorage.getItem('telegram_chat_id');
 
             if (!token || !chatId) {
-              alert('Configure Telegram credentials in Settings first');
+              alert('Configure Telegram in Settings first');
               return;
             }
 
@@ -196,7 +187,7 @@
               if (response.ok) {
                 alert('✓ Sent to Telegram');
               } else {
-                alert('Failed to send. Check credentials.');
+                alert('Failed. Check credentials.');
               }
             } catch (err) {
               alert('Error: ' + err.message);
@@ -220,13 +211,13 @@
               });
             }
 
-            msg += `\n*⚠️ RESEARCH ONLY:* This is a mechanical screen for research purposes only. Not a buy/sell recommendation.\n`;
+            msg += `\n*⚠️ RESEARCH ONLY:* This is mechanical screening for research. Not a buy/sell recommendation.\n`;
             msg += `\nScreen Run: ${new Date().toLocaleString()}`;
 
             return msg;
           };
 
-          // UI: Settings
+          // Settings View
           const SettingsView = () => (
             <div style={styles.container}>
               <h2>⚙️ Settings</h2>
@@ -266,54 +257,22 @@
               </div>
 
               <div style={styles.section}>
-                <h3>Telegram Alerts</h3>
+                <h3>Telegram Alerts (Optional)</h3>
                 <input
                   type="text"
-                  placeholder="Bot Token (8628623625:AAHP2gx...)"
+                  placeholder="Bot Token"
                   defaultValue={localStorage.getItem('telegram_token') || ''}
                   onChange={(e) => localStorage.setItem('telegram_token', e.target.value)}
                   style={styles.input}
                 />
                 <input
                   type="text"
-                  placeholder="Chat ID (7180383339)"
+                  placeholder="Chat ID"
                   defaultValue={localStorage.getItem('telegram_chat_id') || ''}
                   onChange={(e) => localStorage.setItem('telegram_chat_id', e.target.value)}
                   style={styles.input}
                 />
-                <button 
-                  onClick={async () => {
-                    const token = localStorage.getItem('telegram_token');
-                    const chatId = localStorage.getItem('telegram_chat_id');
-                    if (!token || !chatId) {
-                      alert('Enter bot token and chat ID first');
-                      return;
-                    }
-                    try {
-                      const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({chat_id: chatId, text: '✓ Test message - credentials work!'})
-                      });
-                      if (res.ok) {
-                        alert('✓ Success! Check Telegram.');
-                      } else {
-                        alert('✗ Failed: ' + res.status);
-                      }
-                    } catch (err) {
-                      alert('✗ Error: ' + err.message);
-                    }
-                  }}
-                  style={{...styles.input, backgroundColor: '#34C759', color: 'white', border: 'none', padding: '10px', marginBottom: '10px', cursor: 'pointer', fontWeight: '600'}}
-                >
-                  🧪 Test Credentials
-                </button>
                 <small>Get from @BotFather on Telegram</small>
-              </div>
-
-              <div style={{...styles.section, backgroundColor: '#e3f2fd', borderLeft: '4px solid #2196F3'}}>
-                <strong>ℹ️ Test Mode Active</strong>
-                <p style={{fontSize: '12px', marginTop: '8px'}}>Using realistic mock data for demonstration. Real NSE data will be available in next update.</p>
               </div>
 
               <button onClick={() => setViewMode('results')} style={styles.buttonSecondary}>
@@ -322,7 +281,7 @@
             </div>
           );
 
-          // UI: Details
+          // Details View
           const DetailsView = () => {
             if (!selectedMatch) return null;
             
@@ -369,7 +328,7 @@
                 )}
 
                 <div style={styles.disclaimer}>
-                  ⚠️ RESEARCH ONLY: This is a mechanical screen for research purposes. Not a buy/sell recommendation.
+                  ⚠️ RESEARCH ONLY: Mechanical screen for research purposes. Not a buy/sell recommendation.
                 </div>
 
                 <button
@@ -382,12 +341,12 @@
             );
           };
 
-          // UI: Results
+          // Results View
           const ResultsView = () => (
             <div style={styles.container}>
               <div style={styles.header}>
                 <h1>📊 NSE Screener</h1>
-                <small>Real-time screening, no desktop</small>
+                <small>Real NSE data, no desktop</small>
               </div>
 
               <button
@@ -402,7 +361,7 @@
                 <div>
                   <div style={styles.summary}>
                     <div>📈 <strong>{results.match_count}</strong> matches</div>
-                    <div>📋 Screened <strong>{results.total_screened}</strong></div>
+                    <div>📋 Screened <strong>{results.total_processed}</strong></div>
                     <div>🕐 {results.timestamp}</div>
                   </div>
 
