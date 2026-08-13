@@ -45,7 +45,7 @@
           const [results, setResults] = React.useState(null);
           const [viewMode, setViewMode] = React.useState('results');
           const [selectedMatch, setSelectedMatch] = React.useState(null);
-          const [testMode, setTestMode] = React.useState(true); // DEFAULT: TRUE
+          const [testMode, setTestMode] = React.useState(false); // DEFAULT: FALSE - Real data
 
           const BEAR_CASE_LIBRARY = {
             PE_LOW: '⚠️ Low PE may indicate market undervalues fundamentals or expects earnings decline.',
@@ -64,6 +64,40 @@
             'BAJAJ-AUTO.NS': { price: 9200.50, pe: 28.0, pb: 3.5 },
             'WIPRO.NS': { price: 420.50, pe: 20.5, pb: 2.5 },
             'ADANIPORTS.NS': { price: 1050.00, pe: 15.0, pb: 2.0 }
+          };
+
+          // Fetch real stock data from Yahoo Finance
+          const fetchStockData = async (ticker) => {
+            try {
+              const response = await fetch(
+                `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=financialData,defaultKeyStatistics,price`,
+                { headers: { 'User-Agent': 'Mozilla/5.0' } }
+              );
+              
+              if (!response.ok) throw new Error('No data');
+              
+              const data = await response.json();
+              const result = data.quoteSummary?.result?.[0];
+              
+              if (!result) throw new Error('No data');
+
+              const price = result.price?.regularMarketPrice?.raw;
+              const pe = result.defaultKeyStatistics?.trailingPE?.raw;
+              const pb = result.defaultKeyStatistics?.priceToBook?.raw;
+
+              return {
+                ticker,
+                price: price || 0,
+                pe: pe || null,
+                pb: pb || null,
+                data_available: true
+              };
+            } catch (err) {
+              return {
+                ticker,
+                data_available: false
+              };
+            }
           };
 
           const screenStock = (ticker, stockData) => {
@@ -105,12 +139,18 @@
               const matches = [];
 
               for (const ticker of universe) {
-                const mockData = mockStocks[ticker];
-                if (mockData) {
-                  const match = screenStock(ticker, mockData);
-                  if (match) matches.push(match);
+                try {
+                  // Fetch real data if test mode is off
+                  const stockData = testMode ? mockStocks[ticker] : await fetchStockData(ticker);
+                  
+                  if (stockData) {
+                    const match = screenStock(ticker, stockData);
+                    if (match) matches.push(match);
+                  }
+                } catch (err) {
+                  console.error(`Error processing ${ticker}:`, err);
                 }
-                await new Promise(r => setTimeout(r, 200));
+                await new Promise(r => setTimeout(r, 300));
               }
 
               matches.sort((a, b) => b.match_count - a.match_count);
@@ -601,4 +641,3 @@
     </script>
 </body>
 </html>
-
