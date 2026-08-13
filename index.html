@@ -49,6 +49,7 @@
           const [errorMsg, setErrorMsg] = React.useState('');
           const [viewMode, setViewMode] = React.useState('results');
           const [selectedMatch, setSelectedMatch] = React.useState(null);
+          const [testMode, setTestMode] = React.useState(localStorage.getItem('testMode') === 'true');
 
           const BEAR_CASE_LIBRARY = {
             PE_LOW: '⚠️ Low PE may indicate market undervalues fundamentals or expects earnings decline.',
@@ -56,6 +57,32 @@
             RSI_OVERSOLD: '⚠️ Oversold RSI may have bounced already; entry at this point could be late.',
             VOLUME_SPIKE: '⚠️ High volume can signal panic selling, not just institutional buying.',
             PRICE_JUMP: '⚠️ Sharp price moves often reverse; could be a trap for late entrants.'
+          };
+
+          // Generate mock data for test mode
+          const generateMockData = (ticker) => {
+            const mockData = {
+              'RELIANCE.NS': { price: 2850.50, pe: 22.5, pb: 2.8 },
+              'INFY.NS': { price: 1600.75, pe: 24.1, pb: 2.9 },
+              'TCS.NS': { price: 3850.25, pe: 23.5, pb: 3.2 },
+              'HDFC.NS': { price: 2150.00, pe: 21.0, pb: 2.6 },
+              'ICICIBANK.NS': { price: 980.50, pe: 19.5, pb: 2.4 },
+              'SBIN.NS': { price: 750.75, pe: 12.0, pb: 1.8 },
+              'MARUTI.NS': { price: 10850.00, pe: 25.0, pb: 3.1 },
+              'BAJAJ-AUTO.NS': { price: 9200.50, pe: 28.0, pb: 3.5 },
+              'WIPRO.NS': { price: 420.50, pe: 20.5, pb: 2.5 },
+              'ADANIPORTS.NS': { price: 1050.00, pe: 15.0, pb: 2.0 }
+            };
+            
+            const data = mockData[ticker] || { price: Math.random() * 5000, pe: Math.random() * 40, pb: Math.random() * 4 };
+            
+            return {
+              ticker,
+              price: data.price,
+              pe_ratio: data.pe,
+              pb_ratio: data.pb,
+              data_available: true
+            };
           };
 
           // Fetch stock data from Yahoo Finance
@@ -128,7 +155,7 @@
 
               for (const ticker of universe) {
                 try {
-                  const stockData = await fetchStockData(ticker);
+                  const stockData = testMode ? generateMockData(ticker) : await fetchStockData(ticker);
                   processed++;
 
                   if (stockData.data_available) {
@@ -265,6 +292,23 @@
                     style={styles.input}
                   />
                 </div>
+              </div>
+
+              <div style={styles.section}>
+                <h3>Test Mode</h3>
+                <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px'}}>
+                  <input
+                    type="checkbox"
+                    checked={testMode}
+                    onChange={(e) => {
+                      setTestMode(e.target.checked);
+                      localStorage.setItem('testMode', e.target.checked);
+                    }}
+                    style={{width: '20px', height: '20px', cursor: 'pointer'}}
+                  />
+                  <label style={{cursor: 'pointer'}}>Use Mock Data (for testing)</label>
+                </div>
+                <small>Enable to test with realistic fake data. Disable for real NSE data.</small>
               </div>
 
               <div style={styles.section}>
@@ -624,3 +668,4 @@
     </script>
 </body>
 </html>
+
